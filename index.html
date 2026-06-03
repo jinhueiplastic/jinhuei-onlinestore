@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>網店銷量電商儀表板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen">
+
+    <header class="bg-white shadow-sm border-b sticky top-0 z-50">
+        <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+            <h1 class="text-xl font-bold text-blue-600">JIN HUEI 網店銷量分析</h1>
+            <span class="text-sm text-gray-500">數據即時同步</span>
+        </div>
+    </header>
+
+    <main class="container mx-auto px-6 py-8">
+        <div class="bg-white p-6 rounded-xl shadow-sm mb-8 flex flex-wrap gap-4 items-center">
+            <div>
+                <label class="block text-sm font-medium text-gray-600 mb-1">選擇賣場</label>
+                <select id="platform-select" class="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="all">全部賣場 (加總)</option>
+                    <option value="賣貨便">賣貨便</option>
+                    <option value="好賣+">好賣+</option>
+                    <option value="蝦皮">蝦皮</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-600 mb-1">選擇月份</label>
+                <select id="month-select" class="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </select>
+            </div>
+            <button id="refresh-btn" class="ml-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition shadow-sm text-sm font-medium">
+                重新整理數據
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 class="text-lg font-semibold mb-4 text-gray-700">商品銷量長條圖</h2>
+                <div class="relative h-96">
+                    <canvas id="salesChart"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col">
+                <h2 class="text-lg font-semibold mb-4 text-gray-700">當月熱銷排行</h2>
+                <div class="overflow-y-auto flex-1 pr-1" style="max-height: 380px;">
+                    <ul id="ranking-list" class="divide-y divide-gray-100">
+                        <li class="py-3 text-gray-400 text-center">載入數據中...</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
