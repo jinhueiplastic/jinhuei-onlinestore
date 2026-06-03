@@ -7,124 +7,64 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* ── 密碼鎖畫面 ── */
         #lock-screen {
-            position: fixed;
-            inset: 0;
-            z-index: 9999;
-            background: #f8fafc;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            position: fixed; inset: 0; z-index: 9999;
+            background: #f8fafc; display: flex;
+            align-items: center; justify-content: center;
         }
         #lock-screen.hidden { display: none; }
-
         .lock-card {
-            background: #fff;
-            border: 1px solid #e2e8f0;
-            border-radius: 1.25rem;
-            padding: 2.5rem 2rem;
-            width: 100%;
-            max-width: 360px;
-            box-shadow: 0 4px 24px 0 rgba(0,0,0,0.07);
-            text-align: center;
+            background: #fff; border: 1px solid #e2e8f0;
+            border-radius: 1.25rem; padding: 2.5rem 2rem;
+            width: 100%; max-width: 360px;
+            box-shadow: 0 4px 24px 0 rgba(0,0,0,0.07); text-align: center;
         }
         .lock-icon {
-            width: 56px;
-            height: 56px;
-            background: #eff6ff;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 1.25rem;
+            width: 56px; height: 56px; background: #eff6ff;
+            border-radius: 50%; display: flex; align-items: center;
+            justify-content: center; margin: 0 auto 1.25rem;
         }
-
-        /* 密碼點點輸入框 */
-        #pin-dots {
-            display: flex;
-            justify-content: center;
-            gap: 12px;
-            margin: 1.5rem 0 1rem;
-        }
+        #pin-dots { display: flex; justify-content: center; gap: 12px; margin: 1.5rem 0 1rem; }
         .pin-dot {
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            border: 2px solid #cbd5e1;
-            background: transparent;
+            width: 14px; height: 14px; border-radius: 50%;
+            border: 2px solid #cbd5e1; background: transparent;
             transition: background 0.15s, border-color 0.15s;
         }
-        .pin-dot.filled {
-            background: #2563eb;
-            border-color: #2563eb;
-        }
-        .pin-dot.error {
-            background: #ef4444;
-            border-color: #ef4444;
-            animation: shake 0.35s ease;
-        }
-
+        .pin-dot.filled  { background: #2563eb; border-color: #2563eb; }
+        .pin-dot.error   { background: #ef4444; border-color: #ef4444; animation: shake 0.35s ease; }
         @keyframes shake {
             0%,100% { transform: translateX(0); }
-            20%      { transform: translateX(-5px); }
-            40%      { transform: translateX(5px); }
-            60%      { transform: translateX(-4px); }
-            80%      { transform: translateX(4px); }
+            20% { transform: translateX(-5px); }
+            40% { transform: translateX(5px); }
+            60% { transform: translateX(-4px); }
+            80% { transform: translateX(4px); }
         }
-
-        /* 數字鍵盤 */
-        .numpad {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            margin-top: 0.5rem;
-        }
+        .numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 0.5rem; }
         .num-btn {
-            padding: 0.85rem 0;
-            border-radius: 0.75rem;
-            border: 1px solid #e2e8f0;
-            background: #f8fafc;
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: #1e293b;
-            cursor: pointer;
-            transition: background 0.12s, transform 0.1s;
-            user-select: none;
+            padding: 0.85rem 0; border-radius: 0.75rem;
+            border: 1px solid #e2e8f0; background: #f8fafc;
+            font-size: 1.25rem; font-weight: 600; color: #1e293b;
+            cursor: pointer; transition: background 0.12s, transform 0.1s; user-select: none;
         }
         .num-btn:hover  { background: #eff6ff; }
         .num-btn:active { transform: scale(0.94); background: #dbeafe; }
         .num-btn.del    { font-size: 1rem; color: #64748b; }
         .num-btn.empty  { border: none; background: transparent; cursor: default; }
+        #error-msg { color: #ef4444; font-size: 0.8rem; min-height: 1.2rem; margin-top: 0.25rem; }
 
-        #error-msg {
-            color: #ef4444;
-            font-size: 0.8rem;
-            min-height: 1.2rem;
-            margin-top: 0.25rem;
-        }
-
-        /* ── Tab 樣式 ── */
         .tab-btn {
-            padding: 10px 20px;
-            border: none;
+            padding: 10px 20px; border: none;
             border-bottom: 2px solid transparent;
-            background: transparent;
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: #6b7280;
-            cursor: pointer;
+            background: transparent; font-size: 0.875rem; font-weight: 500;
+            color: #6b7280; cursor: pointer;
             transition: color 0.15s, border-color 0.15s;
         }
-        .tab-btn.active {
-            color: #2563eb;
-            border-bottom-color: #2563eb;
-        }
+        .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen">
 
-    <!-- ══ 密碼鎖畫面 ══════════════════════════════════════════════ -->
+    <!-- 密碼鎖 -->
     <div id="lock-screen">
         <div class="lock-card">
             <div class="lock-icon">
@@ -136,16 +76,13 @@
             </div>
             <h2 class="text-lg font-bold text-gray-800">JIN HUEI 銷量儀表板</h2>
             <p class="text-sm text-gray-400 mt-1">請輸入密碼</p>
-
             <div id="pin-dots">
                 <div class="pin-dot" id="dot-0"></div>
                 <div class="pin-dot" id="dot-1"></div>
                 <div class="pin-dot" id="dot-2"></div>
                 <div class="pin-dot" id="dot-3"></div>
             </div>
-
             <p id="error-msg"></p>
-
             <div class="numpad">
                 <button class="num-btn" onclick="pressKey('1')">1</button>
                 <button class="num-btn" onclick="pressKey('2')">2</button>
@@ -163,7 +100,7 @@
         </div>
     </div>
 
-    <!-- ══ 主畫面 ══════════════════════════════════════════════════ -->
+    <!-- 主畫面 -->
     <header class="bg-white shadow-sm border-b sticky top-0 z-50">
         <div class="container mx-auto px-6 py-4 flex justify-between items-center">
             <h1 class="text-xl font-bold text-blue-600">JIN HUEI 網店銷量分析</h1>
@@ -173,9 +110,11 @@
 
     <main class="container mx-auto px-6 py-8">
 
-        <!-- ── Filter Bar ───────────────────────────────────────── -->
+        <!-- Filter Bar -->
         <div class="bg-white p-6 rounded-xl shadow-sm mb-4 flex flex-wrap gap-4 items-center">
-            <div>
+
+            <!-- 賣場選單（Analysis tab 時隱藏） -->
+            <div id="platform-select-wrap">
                 <label class="block text-sm font-medium text-gray-600 mb-1">選擇賣場</label>
                 <select id="platform-select" class="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="all">全部賣場 (加總)</option>
@@ -185,23 +124,31 @@
                 </select>
             </div>
 
-            <!-- 熱銷排行用：月份選單 -->
+            <!-- 熱銷排行：月份選單 -->
             <div id="month-select-wrap">
                 <label class="block text-sm font-medium text-gray-600 mb-1">選擇月份</label>
                 <select id="month-select" class="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
             </div>
 
-            <!-- 商品月銷量用：年份選單 + 搜尋框 -->
+            <!-- 商品月銷量：年份選單 -->
             <div id="year-select-wrap" class="hidden">
                 <label class="block text-sm font-medium text-gray-600 mb-1">選擇年份</label>
                 <select id="year-select" class="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
             </div>
+
+            <!-- 商品月銷量：搜尋 -->
             <div id="product-search-wrap" class="hidden">
                 <label class="block text-sm font-medium text-gray-600 mb-1">搜尋商品</label>
                 <input id="product-search" type="text" placeholder="輸入商品名稱…"
                     oninput="filterProductCards()"
                     class="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    style="width: 200px;">
+                    style="width:200px;">
+            </div>
+
+            <!-- Analysis：年份選單 -->
+            <div id="analysis-year-wrap" class="hidden">
+                <label class="block text-sm font-medium text-gray-600 mb-1">選擇年份</label>
+                <select id="analysis-year-select" class="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
             </div>
 
             <button id="refresh-btn" class="ml-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition shadow-sm text-sm font-medium">
@@ -209,13 +156,14 @@
             </button>
         </div>
 
-        <!-- ── Tab 切換列 ────────────────────────────────────────── -->
+        <!-- Tab 切換列 -->
         <div class="flex gap-0 border-b border-gray-200 mb-6">
-            <button id="tab-btn-rank" class="tab-btn active" onclick="switchTab('rank')">熱銷排行</button>
-            <button id="tab-btn-monthly" class="tab-btn" onclick="switchTab('monthly')">商品月銷量</button>
+            <button id="tab-btn-rank"     class="tab-btn active" onclick="switchTab('rank')">熱銷排行</button>
+            <button id="tab-btn-monthly"  class="tab-btn"        onclick="switchTab('monthly')">商品月銷量</button>
+            <button id="tab-btn-analysis" class="tab-btn"        onclick="switchTab('analysis')">財務分析</button>
         </div>
 
-        <!-- ── 熱銷排行版面 ──────────────────────────────────────── -->
+        <!-- 熱銷排行 -->
         <div id="section-rank">
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -225,7 +173,7 @@
                     </div>
                 </div>
                 <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col">
-                    <h2 class="text-lg font-semibold mb-4 text-gray-700">當月熱銷排行</h2>
+                    <h2 class="text-lg font-semibold mb-4 text-gray-700">熱銷排行</h2>
                     <div class="overflow-y-auto flex-1 pr-1" style="max-height: 480px;">
                         <ul id="ranking-list" class="divide-y divide-gray-100"></ul>
                     </div>
@@ -233,31 +181,31 @@
             </div>
         </div>
 
-        <!-- ── 商品月銷量版面 ────────────────────────────────────── -->
+        <!-- 商品月銷量 -->
         <div id="section-monthly" class="hidden">
             <div id="product-monthly-cards" class="flex flex-col gap-6"></div>
         </div>
 
+        <!-- 財務分析 -->
+        <div id="section-analysis" class="hidden"></div>
+
     </main>
 
-    <!-- ══ 密碼邏輯 ══════════════════════════════════════════════════ -->
+    <!-- 密碼邏輯 -->
     <script>
         const CORRECT_PIN = '0712';
         let inputPin = '';
-
         function pressKey(k) {
             if (inputPin.length >= 4) return;
             inputPin += k;
             updateDots();
             if (inputPin.length === 4) checkPin();
         }
-
         function pressDelete() {
             inputPin = inputPin.slice(0, -1);
             updateDots();
             document.getElementById('error-msg').textContent = '';
         }
-
         function updateDots() {
             for (let i = 0; i < 4; i++) {
                 const dot = document.getElementById(`dot-${i}`);
@@ -265,7 +213,6 @@
                 dot.classList.remove('error');
             }
         }
-
         function checkPin() {
             if (inputPin === CORRECT_PIN) {
                 const lock = document.getElementById('lock-screen');
@@ -273,17 +220,11 @@
                 lock.style.opacity = '0';
                 setTimeout(() => lock.classList.add('hidden'), 300);
             } else {
-                for (let i = 0; i < 4; i++) {
-                    document.getElementById(`dot-${i}`).classList.add('error');
-                }
+                for (let i = 0; i < 4; i++) document.getElementById(`dot-${i}`).classList.add('error');
                 document.getElementById('error-msg').textContent = '密碼錯誤，請再試一次';
-                setTimeout(() => {
-                    inputPin = '';
-                    updateDots();
-                }, 800);
+                setTimeout(() => { inputPin = ''; updateDots(); }, 800);
             }
         }
-
         document.addEventListener('keydown', e => {
             if (document.getElementById('lock-screen').classList.contains('hidden')) return;
             if (e.key >= '0' && e.key <= '9') pressKey(e.key);
