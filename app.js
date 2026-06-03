@@ -347,7 +347,6 @@ function updateList(data) {
                      onerror="this.src='https://placehold.co/100x100?text=Error'">
                 <div class="flex-1 min-w-0">
                     <p class="font-medium text-gray-800 truncate" title="${d.name}">${d.name}</p>
-                    <p class="text-xs text-gray-400 mt-0.5">商品排行</p>
                 </div>
                 <span class="font-semibold text-blue-600 whitespace-nowrap">${d.qty} 件</span>
             </li>`;
