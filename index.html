@@ -6,9 +6,149 @@
     <title>網店銷量電商儀表板</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* ── 密碼鎖畫面 ── */
+        #lock-screen {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: #f8fafc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #lock-screen.hidden { display: none; }
+
+        .lock-card {
+            background: #fff;
+            border: 1px solid #e2e8f0;
+            border-radius: 1.25rem;
+            padding: 2.5rem 2rem;
+            width: 100%;
+            max-width: 360px;
+            box-shadow: 0 4px 24px 0 rgba(0,0,0,0.07);
+            text-align: center;
+        }
+        .lock-icon {
+            width: 56px;
+            height: 56px;
+            background: #eff6ff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.25rem;
+        }
+
+        /* 密碼點點輸入框 */
+        #pin-dots {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin: 1.5rem 0 1rem;
+        }
+        .pin-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid #cbd5e1;
+            background: transparent;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .pin-dot.filled {
+            background: #2563eb;
+            border-color: #2563eb;
+        }
+        .pin-dot.error {
+            background: #ef4444;
+            border-color: #ef4444;
+            animation: shake 0.35s ease;
+        }
+
+        @keyframes shake {
+            0%,100% { transform: translateX(0); }
+            20%      { transform: translateX(-5px); }
+            40%      { transform: translateX(5px); }
+            60%      { transform: translateX(-4px); }
+            80%      { transform: translateX(4px); }
+        }
+
+        /* 數字鍵盤 */
+        .numpad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 0.5rem;
+        }
+        .num-btn {
+            padding: 0.85rem 0;
+            border-radius: 0.75rem;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #1e293b;
+            cursor: pointer;
+            transition: background 0.12s, transform 0.1s;
+            user-select: none;
+        }
+        .num-btn:hover  { background: #eff6ff; }
+        .num-btn:active { transform: scale(0.94); background: #dbeafe; }
+        .num-btn.del    { font-size: 1rem; color: #64748b; }
+        .num-btn.empty  { border: none; background: transparent; cursor: default; }
+
+        #error-msg {
+            color: #ef4444;
+            font-size: 0.8rem;
+            min-height: 1.2rem;
+            margin-top: 0.25rem;
+        }
+    </style>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen">
 
+    <!-- ══ 密碼鎖畫面 ══════════════════════════════════════════════ -->
+    <div id="lock-screen">
+        <div class="lock-card">
+            <div class="lock-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="none"
+                     viewBox="0 0 24 24" stroke="#2563eb" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+            </div>
+            <h2 class="text-lg font-bold text-gray-800">JIN HUEI 銷量儀表板</h2>
+            <p class="text-sm text-gray-400 mt-1">請輸入密碼</p>
+
+            <!-- 密碼點點 -->
+            <div id="pin-dots">
+                <div class="pin-dot" id="dot-0"></div>
+                <div class="pin-dot" id="dot-1"></div>
+                <div class="pin-dot" id="dot-2"></div>
+                <div class="pin-dot" id="dot-3"></div>
+            </div>
+
+            <p id="error-msg"></p>
+
+            <!-- 數字鍵盤 -->
+            <div class="numpad">
+                <button class="num-btn" onclick="pressKey('1')">1</button>
+                <button class="num-btn" onclick="pressKey('2')">2</button>
+                <button class="num-btn" onclick="pressKey('3')">3</button>
+                <button class="num-btn" onclick="pressKey('4')">4</button>
+                <button class="num-btn" onclick="pressKey('5')">5</button>
+                <button class="num-btn" onclick="pressKey('6')">6</button>
+                <button class="num-btn" onclick="pressKey('7')">7</button>
+                <button class="num-btn" onclick="pressKey('8')">8</button>
+                <button class="num-btn" onclick="pressKey('9')">9</button>
+                <button class="num-btn empty"></button>
+                <button class="num-btn" onclick="pressKey('0')">0</button>
+                <button class="num-btn del" onclick="pressDelete()">⌫</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ 主畫面（密碼正確後顯示）══════════════════════════════════ -->
     <header class="bg-white shadow-sm border-b sticky top-0 z-50">
         <div class="container mx-auto px-6 py-4 flex justify-between items-center">
             <h1 class="text-xl font-bold text-blue-600">JIN HUEI 網店銷量分析</h1>
@@ -30,7 +170,7 @@
             <div>
                 <label class="block text-sm font-medium text-gray-600 mb-1">選擇月份</label>
                 <select id="month-select" class="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    </select>
+                </select>
             </div>
             <button id="refresh-btn" class="ml-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition shadow-sm text-sm font-medium">
                 重新整理數據
@@ -44,16 +184,68 @@
                     <canvas id="salesChart"></canvas>
                 </div>
             </div>
-
             <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col">
-    <h2 class="text-lg font-semibold mb-4 text-gray-700">當月熱銷排行</h2>
-    <div class="overflow-y-auto flex-1 pr-1" style="max-height: 480px;">
-        <ul id="ranking-list" class="divide-y divide-gray-100">
-            </ul>
-    </div>
-</div>
+                <h2 class="text-lg font-semibold mb-4 text-gray-700">當月熱銷排行</h2>
+                <div class="overflow-y-auto flex-1 pr-1" style="max-height: 480px;">
+                    <ul id="ranking-list" class="divide-y divide-gray-100"></ul>
+                </div>
+            </div>
         </div>
     </main>
+
+    <!-- ══ 密碼邏輯 ══════════════════════════════════════════════════ -->
+    <script>
+        const CORRECT_PIN = '0712';
+        let inputPin = '';
+
+        function pressKey(k) {
+            if (inputPin.length >= 4) return;
+            inputPin += k;
+            updateDots();
+            if (inputPin.length === 4) checkPin();
+        }
+
+        function pressDelete() {
+            inputPin = inputPin.slice(0, -1);
+            updateDots();
+            document.getElementById('error-msg').textContent = '';
+        }
+
+        function updateDots() {
+            for (let i = 0; i < 4; i++) {
+                const dot = document.getElementById(`dot-${i}`);
+                dot.classList.toggle('filled', i < inputPin.length);
+                dot.classList.remove('error');
+            }
+        }
+
+        function checkPin() {
+            if (inputPin === CORRECT_PIN) {
+                // 正確：淡出鎖定畫面
+                const lock = document.getElementById('lock-screen');
+                lock.style.transition = 'opacity 0.3s';
+                lock.style.opacity = '0';
+                setTimeout(() => lock.classList.add('hidden'), 300);
+            } else {
+                // 錯誤：顯示紅點 + 訊息，然後清空
+                for (let i = 0; i < 4; i++) {
+                    document.getElementById(`dot-${i}`).classList.add('error');
+                }
+                document.getElementById('error-msg').textContent = '密碼錯誤，請再試一次';
+                setTimeout(() => {
+                    inputPin = '';
+                    updateDots();
+                }, 800);
+            }
+        }
+
+        // 支援實體鍵盤輸入
+        document.addEventListener('keydown', e => {
+            if (document.getElementById('lock-screen').classList.contains('hidden')) return;
+            if (e.key >= '0' && e.key <= '9') pressKey(e.key);
+            if (e.key === 'Backspace') pressDelete();
+        });
+    </script>
 
     <script src="app.js"></script>
 </body>
