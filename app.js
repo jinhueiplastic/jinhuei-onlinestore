@@ -45,7 +45,7 @@ const MONTHS_LABEL = ['1月','2月','3月','4月','5月','6月','7月','8月','9
 
 let itemMap = { codes: {}, names: {} };
 let allOrdersData = [];
-let analysisData = [];   // [{ ym:'2025.06', orders, sales, actual, fee }]
+let analysisData = [];
 let myChart = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -199,8 +199,8 @@ async function fetchTabOrders(config) {
 }
 
 // ─── 讀取 Analysis 分頁 ───────────────────────────────────────────────────────
-// A欄(0)=月份(2025年6月)  B欄(1)=訂單數  C欄(2)=銷售總額  D欄(3)=實拿總額  E欄(4)=平台手續費
-// 第1-2列是標題，第3列起資料（gviz 已吸收標題列，所以 rows[0] 是第3列）
+// 欄位：A(0)=月份  B(1)=訂單數  C(2)=銷售總額  D(3)=實拿總額  E(4)=平台手續費
+// 第1列空行 + 第2列標題 → gviz parsedNumHeaders:2 → rows[0] 即第3列資料
 async function fetchAnalysisData() {
     try {
         const data = await fetchGvizData(ANALYSIS_GID);
@@ -208,10 +208,15 @@ async function fetchAnalysisData() {
         if (data?.table?.rows) {
             data.table.rows.forEach(row => {
                 if (!row.c) return;
-                // 解析月份：支援 "2025年6月" / "2025/06" 等格式
-                const rawMonth = row.c[0]?.v ? String(row.c[0].v).trim()
-                               : row.c[0]?.f ? String(row.c[0].f).trim() : '';
+
+                // ✅ 修正：優先讀 cell.f（"2025年6月"），
+                //    因為 cell.v 是 "Date(2025,5,1)" 字串，regex 無法比對
+                const cell0 = row.c[0];
+                if (!cell0) return;
+                const rawMonth = cell0.f ? String(cell0.f).trim()
+                               : cell0.v ? String(cell0.v).trim() : '';
                 if (!rawMonth) return;
+
                 const m = rawMonth.match(/(\d{4})[年\/\-](\d{1,2})/);
                 if (!m) return;
                 const ym = `${m[1]}.${m[2].padStart(2, '0')}`;
@@ -224,9 +229,8 @@ async function fetchAnalysisData() {
                 analysisData.push({ ym, orders, sales, actual, fee });
             });
         }
-        // 升序排列
         analysisData.sort((a, b) => a.ym.localeCompare(b.ym));
-        console.log('✅ Analysis 資料：', analysisData);
+        console.log('✅ Analysis 資料：', analysisData.length, '筆');
     } catch (e) {
         console.warn('⚠️ Analysis 載入失敗:', e.message);
     }
@@ -239,7 +243,7 @@ function initMonthSelect() {
     monthSelect.innerHTML =
         '<option value="all">全部月份（年度累計）</option>' +
         months.map(m => `<option value="${m}">${m.replace('.', ' 年 ')} 月</option>`).join('');
-    monthSelect.value = 'all';   // ← 預設全部
+    monthSelect.value = 'all';
 
     initYearSelect();
     initAnalysisYearSelect();
@@ -255,7 +259,7 @@ function initYearSelect() {
     sel.innerHTML =
         `<option value="all">${rangeLabel}</option>` +
         years.map(y => `<option value="${y}">${y} 年</option>`).join('');
-    sel.value = 'all';   // ← 預設全部
+    sel.value = 'all';
 }
 
 // ─── 初始化年份下拉（Analysis）───────────────────────────────────────────────
@@ -268,7 +272,7 @@ function initAnalysisYearSelect() {
     sel.innerHTML =
         `<option value="all">${rangeLabel}</option>` +
         years.map(y => `<option value="${y}">${y} 年</option>`).join('');
-    sel.value = 'all';   // ← 預設全部
+    sel.value = 'all';
 }
 
 // ─── Tab 切換 ─────────────────────────────────────────────────────────────────
@@ -278,12 +282,10 @@ function switchTab(tab) {
         document.getElementById(`section-${t}`).classList.toggle('hidden', t !== tab);
         document.getElementById(`tab-btn-${t}`).classList.toggle('active', t === tab);
     });
-    // filter bar 控制項
     document.getElementById('month-select-wrap').classList.toggle('hidden', tab !== 'rank');
     document.getElementById('year-select-wrap').classList.toggle('hidden', tab !== 'monthly');
     document.getElementById('product-search-wrap').classList.toggle('hidden', tab !== 'monthly');
     document.getElementById('analysis-year-wrap').classList.toggle('hidden', tab !== 'analysis');
-    // platform select：analysis tab 不需要
     document.getElementById('platform-select-wrap').classList.toggle('hidden', tab === 'analysis');
 
     if (tab === 'monthly') renderProductMonthly();
@@ -376,7 +378,7 @@ function renderProductMonthly() {
     if (yearVal === 'all') {
         allMonths = [...new Set(allOrdersData.map(d => d.month))].sort();
     } else {
-        allMonths = MONTHS_LABEL.map((_, i) => `${yearVal}.${String(i + 1).padStart(2, '0')}`);
+        allMonths = MONTHS_LABEL.map((_, i) => `${yearVal}.${String(i + 1).padStart(2, '00')}`);
     }
     const axisLabels = allMonths.map(ym => {
         const [y, m] = ym.split('.');
@@ -487,7 +489,6 @@ let analysisCharts = {};
 
 function renderAnalysis() {
     const yearVal = document.getElementById('analysis-year-select').value;
-
     const rows = analysisData.filter(d => yearVal === 'all' || d.ym.startsWith(yearVal));
 
     const container = document.getElementById('section-analysis');
@@ -499,13 +500,11 @@ function renderAnalysis() {
         return;
     }
 
-    // 軸標籤
     const labels = rows.map(d => {
         const [y, m] = d.ym.split('.');
         return yearVal === 'all' ? `${y}/${m}` : `${parseInt(m)}月`;
     });
 
-    // 摘要總計
     const totOrders = rows.reduce((s, d) => s + d.orders, 0);
     const totSales  = rows.reduce((s, d) => s + d.sales, 0);
     const totActual = rows.reduce((s, d) => s + d.actual, 0);
@@ -516,7 +515,6 @@ function renderAnalysis() {
         : `$${Math.round(n).toLocaleString()}`;
 
     container.innerHTML = `
-        <!-- 摘要卡片 -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 text-center">
                 <p class="text-xs text-gray-400 mb-1">訂單總數</p>
@@ -536,7 +534,6 @@ function renderAnalysis() {
             </div>
         </div>
 
-        <!-- 月銷售額折線圖 -->
         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
             <div style="display:flex;gap:20px;margin-bottom:12px;flex-wrap:wrap;">
                 <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#6b7280;">
@@ -546,23 +543,21 @@ function renderAnalysis() {
                     <span style="width:24px;height:3px;background:#16a34a;display:inline-block;border-radius:2px;"></span>實拿總額
                 </span>
                 <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#6b7280;">
-                    <span style="width:24px;height:3px;background:#ef4444;display:inline-block;border-radius:2px;border-top:2px dashed #ef4444;"></span>平台手續費
+                    <span style="width:24px;height:3px;background:#ef4444;display:inline-block;border-radius:2px;"></span>平台手續費
                 </span>
             </div>
             <div class="relative" style="height:260px;">
-                <canvas id="analysis-line-chart" role="img" aria-label="月銷售額趨勢折線圖"></canvas>
+                <canvas id="analysis-line-chart"></canvas>
             </div>
         </div>
 
-        <!-- 月訂單數長條圖 -->
         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
             <p class="text-sm font-medium text-gray-600 mb-3">每月訂單數</p>
             <div class="relative" style="height:220px;">
-                <canvas id="analysis-order-chart" role="img" aria-label="每月訂單數長條圖"></canvas>
+                <canvas id="analysis-order-chart"></canvas>
             </div>
         </div>
 
-        <!-- 明細表格 -->
         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
             <p class="text-sm font-medium text-gray-600 mb-4">月份明細</p>
             <div class="overflow-x-auto">
@@ -578,8 +573,8 @@ function renderAnalysis() {
                     </thead>
                     <tbody>
                         ${rows.map((d, i) => {
-                            const [y, m] = d.ym.split('.');
-                            const label = `${y} 年 ${parseInt(m)} 月`;
+                            const [y, mo] = d.ym.split('.');
+                            const label = `${y} 年 ${parseInt(mo)} 月`;
                             const bg = i % 2 === 0 ? '' : 'background:#f9fafb;';
                             return `<tr style="${bg}">
                                 <td class="py-2.5 pr-4 text-gray-700">${label}</td>
@@ -603,7 +598,6 @@ function renderAnalysis() {
             </div>
         </div>`;
 
-    // 折線圖
     const lineCtx = document.getElementById('analysis-line-chart').getContext('2d');
     analysisCharts.line = new Chart(lineCtx, {
         type: 'line',
@@ -655,14 +649,13 @@ function renderAnalysis() {
                     beginAtZero: true,
                     ticks: {
                         font: { size: 11 },
-                        callback: v => v >= 10000 ? `${(v/10000).toFixed(0)}萬` : v.toLocaleString()
+                        callback: v => v >= 10000 ? `${(v / 10000).toFixed(0)}萬` : v.toLocaleString()
                     }
                 }
             }
         }
     });
 
-    // 訂單數長條圖
     const orderCtx = document.getElementById('analysis-order-chart').getContext('2d');
     analysisCharts.order = new Chart(orderCtx, {
         type: 'bar',
