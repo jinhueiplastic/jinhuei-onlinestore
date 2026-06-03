@@ -3,27 +3,27 @@ const SPREADSHEET_ID = '1UVjxSh9d7mFpdR3pZIWGG7TCJWiaYTIMN2apSQHjg0U';
 // 欄位索引 (A=0, B=1, C=2 ... Z=25, AA=26, AB=27 ... AG=32)
 const TABS_CONFIG = [
     {
-        gid: '113883750',
+        gid: '1172321346',         // ✅ 修正
         tabName: '賣貨便-訂單',
         platform: '賣貨便',
         dateIdx: 1,    // B欄：日期（可能空白，需繼承上一列）
         nameIdx: 4,    // E欄：商品名稱
         qtyIdx: 7,     // H欄：數量
         matchType: 'name',
-        inheritDate: true  // ✅ 空白日期繼承上一列
+        inheritDate: true
     },
     {
-        gid: '1863581895',
+        gid: '1589327275',         // ✅ 修正
         tabName: '好賣+訂單',
         platform: '好賣+',
         dateIdx: 32,   // AG欄：日期
         nameIdx: 9,    // J欄：商品名稱
         qtyIdx: 12,    // M欄：數量
         matchType: 'name',
-        inheritDate: true  // ✅ 保險起見也繼承
+        inheritDate: true
     },
     {
-        gid: '1172321346',
+        gid: '113883750',          // ✅ 修正
         tabName: 'Order',
         platform: '蝦皮',
         dateIdx: 3,    // D欄：日期（格式：2026/4/28 07:52）
