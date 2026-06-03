@@ -3,7 +3,7 @@ const SPREADSHEET_ID = '1UVjxSh9d7mFpdR3pZIWGG7TCJWiaYTIMN2apSQHjg0U';
 // 欄位索引 (A=0, B=1, C=2 ... Z=25, AA=26, AB=27 ... AG=32)
 const TABS_CONFIG = [
     {
-        gid: '1172321346',         // ✅ 修正
+        gid: '1172321346',
         tabName: '賣貨便-訂單',
         platform: '賣貨便',
         dateIdx: 1,    // B欄：日期（可能空白，需繼承上一列）
@@ -13,7 +13,7 @@ const TABS_CONFIG = [
         inheritDate: true
     },
     {
-        gid: '1589327275',         // ✅ 修正
+        gid: '1589327275',
         tabName: '好賣+訂單',
         platform: '好賣+',
         dateIdx: 32,   // AG欄：日期
@@ -23,7 +23,7 @@ const TABS_CONFIG = [
         inheritDate: true
     },
     {
-        gid: '113883750',          // ✅ 修正
+        gid: '113883750',
         tabName: 'Order',
         platform: '蝦皮',
         dateIdx: 3,    // D欄：日期（格式：2026/4/28 07:52）
@@ -41,15 +41,24 @@ let allOrdersData = [];
 let myChart = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
-    document.getElementById('platform-select').addEventListener('change', renderData);
-    document.getElementById('month-select').addEventListener('change', renderData);
+    document.getElementById('platform-select').addEventListener('change', onFilterChange);
+    document.getElementById('month-select').addEventListener('change', onFilterChange);
+    document.getElementById('year-select').addEventListener('change', renderProductMonthly);
     document.getElementById('refresh-btn').addEventListener('click', loadAllData);
     await loadAllData();
 });
 
+// ─── 篩選器變動：依目前 tab 決定要呼叫哪個 render ────────────────────────────
+function onFilterChange() {
+    const activeTab = document.getElementById('section-rank').classList.contains('hidden') ? 'monthly' : 'rank';
+    if (activeTab === 'rank') {
+        renderData();
+    } else {
+        renderProductMonthly();
+    }
+}
+
 // ─── 統一抓取 gviz JSON ───────────────────────────────────────────────────────
-// 不加 &headers=0，讓 gviz 自動把第一列（標題列）當 column header 吸收，
-// rows 陣列裡就全是資料列。
 async function fetchGvizData(gid) {
     const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&gid=${gid}`;
     const response = await fetch(url);
@@ -60,28 +69,20 @@ async function fetchGvizData(gid) {
 }
 
 // ─── 解析 gviz 日期欄，回傳 "YYYY.MM" 字串，失敗回傳 null ───────────────────
-// 支援：
-//   "2026-06-01"、"2026/4/28 07:52"（帶時間）
-//   gviz Date(2025,2,15)（月份 0-indexed）
-//   Excel serial number
 function parseGvizDate(cell) {
     if (!cell || (cell.v == null && !cell.f)) return null;
 
-    // 優先用格式化字串 cell.f（最接近使用者看到的）
     const raw = cell.f ? String(cell.f) : (cell.v != null ? String(cell.v) : '');
 
-    // 匹配 YYYY-MM 或 YYYY/MM（後面可以接任何字元，例如日 or 時間）
     const m1 = raw.match(/(\d{4})[年\/-](\d{1,2})/);
     if (m1) return `${m1[1]}.${m1[2].padStart(2, '0')}`;
 
-    // gviz 原始值 Date(YYYY, M, D)，月份 0-indexed 要 +1
     const m2 = String(cell.v ?? '').match(/Date\((\d{4}),\s*(\d{1,2}),\s*(\d{1,2})\)/);
     if (m2) {
         const month = parseInt(m2[2]) + 1;
         return `${m2[1]}.${String(month).padStart(2, '0')}`;
     }
 
-    // Excel serial number（數字）
     if (typeof cell.v === 'number' && cell.v > 0) {
         const date = new Date((cell.v - 25569) * 86400 * 1000);
         if (!isNaN(date)) {
@@ -124,7 +125,6 @@ async function loadAllData() {
 }
 
 // ─── 讀取 Item 頁，建立字典 ──────────────────────────────────────────────────
-// Item 頁：B欄(1)=貨號, AA欄(26)=簡稱, AC欄(28)=圖片URL
 async function fetchItemDictionary() {
     try {
         const data = await fetchGvizData(0);
@@ -156,7 +156,7 @@ async function fetchTabOrders(config) {
     try {
         const data = await fetchGvizData(config.gid);
         let count = 0;
-        let lastValidDate = null; // ✅ 記住上一列有效日期，供空白列繼承
+        let lastValidDate = null;
 
         if (data?.table?.rows) {
             data.table.rows.forEach(row => {
@@ -168,13 +168,10 @@ async function fetchTabOrders(config) {
                     const parsedDate = parseGvizDate(dateCell);
 
                     if (parsedDate) {
-                        // 有日期：更新記憶
                         lastValidDate = parsedDate;
                     } else if (config.inheritDate && lastValidDate) {
-                        // ✅ 空白日期：沿用上一列的日期（賣貨便同張訂單多筆商品）
-                        // lastValidDate 保持不變，繼續往下執行
+                        // 空白日期：沿用上一列的日期
                     } else {
-                        // 無法取得日期且不允許繼承：跳過
                         return;
                     }
 
@@ -186,7 +183,6 @@ async function fetchTabOrders(config) {
 
                     const rawId = nameCell.v ? String(nameCell.v).trim() : '';
 
-                    // ✅ 有效性檢查：名稱不能是空白、null、或純數字
                     if (!rawId || rawId === 'null' || /^\d+$/.test(rawId)) return;
 
                     // ── 步驟 3：解析數量（預設 1）────────────────────────────
@@ -200,14 +196,12 @@ async function fetchTabOrders(config) {
                     let resolved = { shortName: rawId, imgUrl: '' };
 
                     if (config.matchType === 'code') {
-                        // 蝦皮：O欄貨號完全比對 Item B欄
                         if (itemMap.codes[rawId]) {
                             resolved = itemMap.codes[rawId];
                         } else {
                             console.warn(`⚠️ [${config.platform}] 找不到貨號：${rawId}`);
                         }
                     } else {
-                        // 賣貨便 / 好賣+：雙向包含比對 Item AA欄簡稱
                         let matched = false;
                         for (const key in itemMap.names) {
                             if (rawId.includes(key) || key.includes(rawId)) {
@@ -231,7 +225,6 @@ async function fetchTabOrders(config) {
 
                     count++;
                 } catch (innerErr) {
-                    // 單列解析失敗：跳過，不影響其他資料
                     console.warn('單列解析失敗:', innerErr.message);
                 }
             });
@@ -243,25 +236,55 @@ async function fetchTabOrders(config) {
     }
 }
 
-// ─── 初始化月份下拉 ───────────────────────────────────────────────────────────
+// ─── 初始化月份下拉（熱銷排行用）─────────────────────────────────────────────
 function initMonthSelect() {
     const monthSelect = document.getElementById('month-select');
     const months = [...new Set(allOrdersData.map(d => d.month))]
-        .sort((a, b) => b.localeCompare(a)); // 最新月份排前面
+        .sort((a, b) => b.localeCompare(a));
 
     if (months.length === 0) {
         monthSelect.innerHTML = '<option value="all">全部月份（無資料）</option>';
-        return;
+    } else {
+        monthSelect.innerHTML =
+            '<option value="all">全部月份（年度累計）</option>' +
+            months.map(m => `<option value="${m}">${m.replace('.', ' 年 ')} 月</option>`).join('');
+        monthSelect.value = months[0];
     }
 
-    monthSelect.innerHTML =
-        '<option value="all">全部月份（年度累計）</option>' +
-        months.map(m => `<option value="${m}">${m.replace('.', ' 年 ')} 月</option>`).join('');
-
-    monthSelect.value = months[0]; // 預設最新月份
+    // 同步初始化年份選單（商品月銷量用）
+    initYearSelect();
 }
 
-// ─── 篩選 & 渲染 ──────────────────────────────────────────────────────────────
+// ─── 初始化年份下拉（商品月銷量用）──────────────────────────────────────────
+function initYearSelect() {
+    const years = [...new Set(allOrdersData.map(d => d.month.split('.')[0]))]
+        .sort((a, b) => b - a);
+    const sel = document.getElementById('year-select');
+    sel.innerHTML = years.map(y => `<option value="${y}">${y} 年</option>`).join('');
+}
+
+// ─── Tab 切換 ─────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+    const isRank = tab === 'rank';
+
+    // 版面顯示/隱藏
+    document.getElementById('section-rank').classList.toggle('hidden', !isRank);
+    document.getElementById('section-monthly').classList.toggle('hidden', isRank);
+
+    // Filter bar 控制項切換
+    document.getElementById('month-select-wrap').classList.toggle('hidden', !isRank);
+    document.getElementById('year-select-wrap').classList.toggle('hidden', isRank);
+    document.getElementById('product-search-wrap').classList.toggle('hidden', isRank);
+
+    // Tab 按鈕樣式
+    document.getElementById('tab-btn-rank').classList.toggle('active', isRank);
+    document.getElementById('tab-btn-monthly').classList.toggle('active', !isRank);
+
+    // 切換到月銷量時觸發渲染
+    if (!isRank) renderProductMonthly();
+}
+
+// ─── 篩選 & 渲染（熱銷排行）──────────────────────────────────────────────────
 function renderData() {
     const p = document.getElementById('platform-select').value;
     const m = document.getElementById('month-select').value;
@@ -271,12 +294,10 @@ function renderData() {
         (m === 'all' || d.month === m)
     );
 
-    // 依商品名稱加總數量
     const sum = {};
     filtered.forEach(d => {
         if (!sum[d.name]) sum[d.name] = { qty: 0, img: d.imgUrl };
         sum[d.name].qty += d.quantity;
-        // 補圖片：前面沒有圖但後面有的話補上
         if (!sum[d.name].img && d.imgUrl) sum[d.name].img = d.imgUrl;
     });
 
@@ -288,7 +309,7 @@ function renderData() {
     updateList(sorted);
 }
 
-// ─── 長條圖（前 15 名）────────────────────────────────────────────────────────
+// ─── 長條圖（熱銷排行，前 15 名）─────────────────────────────────────────────
 function updateChart(data) {
     const ctx = document.getElementById('salesChart').getContext('2d');
     if (myChart) myChart.destroy();
@@ -351,4 +372,131 @@ function updateList(data) {
                 <span class="font-semibold text-blue-600 whitespace-nowrap">${d.qty} 件</span>
             </li>`;
     }).join('');
+}
+
+// ─── 商品月銷量：搜尋篩選 ─────────────────────────────────────────────────────
+function filterProductCards() {
+    renderProductMonthly();
+}
+
+// ─── 商品月銷量：渲染所有商品卡片 ────────────────────────────────────────────
+let monthlyCharts = {};
+
+function renderProductMonthly() {
+    const platform = document.getElementById('platform-select').value;
+    const year = document.getElementById('year-select').value;
+    const q = (document.getElementById('product-search').value || '').trim().toLowerCase();
+
+    if (!year) return;
+
+    // 篩選該年 + 賣場
+    const filtered = allOrdersData.filter(d =>
+        d.month.startsWith(year) &&
+        (platform === 'all' || d.platform === platform)
+    );
+
+    // 依商品名稱分組，計算 1–12 月銷量
+    const productMap = {};
+    filtered.forEach(d => {
+        const mm = parseInt(d.month.split('.')[1]) - 1; // 0-indexed
+        if (!productMap[d.name]) {
+            productMap[d.name] = {
+                name: d.name,
+                img: d.imgUrl,
+                monthly: new Array(12).fill(0)
+            };
+        }
+        productMap[d.name].monthly[mm] += d.quantity;
+        if (!productMap[d.name].img && d.imgUrl) productMap[d.name].img = d.imgUrl;
+    });
+
+    // 依年度總量排序
+    let products = Object.values(productMap)
+        .sort((a, b) =>
+            b.monthly.reduce((s, v) => s + v, 0) -
+            a.monthly.reduce((s, v) => s + v, 0)
+        );
+
+    // 搜尋篩選
+    if (q) products = products.filter(p => p.name.toLowerCase().includes(q));
+
+    const container = document.getElementById('product-monthly-cards');
+
+    // 銷毀舊圖表
+    Object.values(monthlyCharts).forEach(c => c.destroy());
+    monthlyCharts = {};
+
+    if (products.length === 0) {
+        container.innerHTML = '<p class="text-gray-400 text-center py-12">無銷售數據</p>';
+        return;
+    }
+
+    const MONTHS = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+    container.innerHTML = products.map((p, i) => {
+        const total = p.monthly.reduce((a, b) => a + b, 0);
+        const imgSrc = p.img && p.img.startsWith('http')
+            ? p.img
+            : 'https://placehold.co/100x100?text=No+Img';
+
+        return `
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <div class="flex items-center gap-4 mb-5">
+                    <img src="${imgSrc}"
+                         class="w-14 h-14 rounded-lg object-cover border bg-gray-100 flex-shrink-0"
+                         onerror="this.src='https://placehold.co/100x100?text=Error'">
+                    <div>
+                        <p class="font-semibold text-gray-800 text-base">${p.name}</p>
+                        <p class="text-sm text-gray-400 mt-0.5">
+                            ${year} 年累計銷量：
+                            <span class="font-semibold text-blue-600">${total} 件</span>
+                        </p>
+                    </div>
+                </div>
+                <div class="relative" style="height: 200px;">
+                    <canvas id="mchart-${i}"
+                            role="img"
+                            aria-label="${p.name} ${year}年各月銷量長條圖">
+                        ${MONTHS.map((m, mi) => `${m}: ${p.monthly[mi]} 件`).join('、')}
+                    </canvas>
+                </div>
+            </div>`;
+    }).join('');
+
+    // 建立各商品圖表
+    products.forEach((p, i) => {
+        const ctx = document.getElementById(`mchart-${i}`).getContext('2d');
+        monthlyCharts[i] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: MONTHS,
+                datasets: [{
+                    label: '銷售件數',
+                    data: p.monthly,
+                    backgroundColor: 'rgba(30, 64, 175, 0.72)',
+                    borderColor: '#1e3a8a',
+                    borderWidth: 1,
+                    borderRadius: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: {
+                        ticks: {
+                            font: { size: 11 },
+                            autoSkip: false,
+                            maxRotation: 0
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { precision: 0, font: { size: 11 } }
+                    }
+                }
+            }
+        });
+    });
 }
