@@ -531,6 +531,7 @@ function renderAnalysis() {
             <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 text-center">
                 <p class="text-xs text-gray-400 mb-1">平台手續費</p>
                 <p class="text-2xl font-semibold text-red-500">${fmt(totFee)}</p>
+                <p class="text-xs text-gray-400 mt-1">（約 ${totSales > 0 ? ((totFee / totSales) * 100).toFixed(1) : 0}%）</p>
             </div>
         </div>
 
