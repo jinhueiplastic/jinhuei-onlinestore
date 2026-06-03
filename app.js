@@ -1,27 +1,17 @@
 const SPREADSHEET_ID = '1UVjxSh9d7mFpdR3pZIWGG7TCJWiaYTIMN2apSQHjg0U';
 
-// 精準對齊欄位索引 (A欄=0, B=1, C=2...)
 const TABS_CONFIG = [
     { 
         gid: '113883750', tabName: '賣貨便-訂單', platform: '賣貨便',
-        dateIdx: 1,      // B 欄
-        nameIdx: 4,      // E 欄 (商品名稱)
-        qtyIdx: 7,       // H 欄 (數量)
-        matchType: 'name' 
+        dateIdx: 1, nameIdx: 4, qtyIdx: 7, matchType: 'name' 
     },
     { 
         gid: '1863581895', tabName: '好賣+訂單', platform: '好賣+',
-        dateIdx: 32,     // AG 欄 (第33欄)
-        nameIdx: 9,      // J 欄 (第10欄)
-        qtyIdx: 12,      // M 欄 (第13欄)
-        matchType: 'name' 
+        dateIdx: 32, nameIdx: 9, qtyIdx: 12, matchType: 'name' 
     },
     { 
         gid: '1172321346', tabName: 'Order', platform: '蝦皮',
-        dateIdx: 3,      // D 欄 (第4欄)
-        nameIdx: 14,     // O 欄 (第15欄 商品選項貨號)
-        qtyIdx: 15,      // P 欄 (第16欄 數量)
-        matchType: 'code' 
+        dateIdx: 3, nameIdx: 14, qtyIdx: 15, matchType: 'code' 
     }
 ];
 
@@ -36,161 +26,186 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadAllData();
 });
 
-async function loadAllData() {
-    document.getElementById('ranking-list').innerHTML = '<li class="py-3 text-center text-gray-400">正在深度同步雲端商品主檔與訂單...</li>';
-    
-    // Step 1: 抓取 Item 頁面 (gid=0)
-    await fetchItemDictionary();
-    
-    // Step 2: 抓取所有訂單
-    allOrdersData = [];
-    const promises = TABS_CONFIG.map(config => fetchTabOrders(config));
-    await Promise.all(promises);
-
-    console.log("總共成功抓取到的訂單筆數:", allOrdersData.length);
-
-    initMonthSelect();
-    renderData();
+// ✅ 統一的 gviz fetch 函式，加上 &headers=0
+async function fetchGvizData(gid) {
+    const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&gid=${gid}&headers=0`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+    const text = await response.text();
+    // gviz 回傳不是純 JSON，要去掉前後包裝
+    const jsonStr = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+    return JSON.parse(jsonStr);
 }
 
-// 讀取 Item 頁面建立索引：B(1)貨號, AA(26)簡稱, AC(28)圖片
-async function fetchItemDictionary() {
-    const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&gid=0`;
-    try {
-        const response = await fetch(url);
-        const text = await response.text();
-        const data = JSON.parse(text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1));
-        
-        itemMap = { codes: {}, names: {} };
-        if (data && data.table && data.table.rows) {
-            data.table.rows.forEach((row, idx) => {
-                if (idx === 0 || !row.c) return; 
-                
-                const code = (row.c[1] && row.c[1].v) ? String(row.c[1].v).trim() : '';
-                const shortName = (row.c[26] && row.c[26].v) ? String(row.c[26].v).trim() : '';
-                const imgUrl = (row.c[28] && row.c[28].v) ? String(row.c[28].v).trim() : '';
+// ✅ 解析 gviz 日期格式（Date(year, month0indexed, day) 月份要 +1）
+function parseGvizDate(cell) {
+    if (!cell) return null;
+    
+    // 優先用格式化字串 (f)
+    const raw = cell.f || (cell.v ? String(cell.v) : '');
+    
+    // 格式: 2025/1/15 或 2025-01-15 或 2025年1月
+    let m = raw.match(/(\d{4})[年\/-](\d{1,2})/);
+    if (m) return `${m[1]}.${m[2].padStart(2, '0')}`;
+    
+    // gviz 原始格式: Date(2025,0,15) — 月份是 0-indexed！
+    m = String(cell.v || '').match(/Date\((\d{4}),\s*(\d{1,2}),\s*(\d{1,2})\)/);
+    if (m) {
+        const month = parseInt(m[2]) + 1; // ✅ 關鍵：0-indexed 要 +1
+        return `${m[1]}.${String(month).padStart(2, '0')}`;
+    }
+    
+    // gviz 有時回傳數字（Excel serial date）
+    if (typeof cell.v === 'number') {
+        // Excel date serial: 從 1900/1/1 起算
+        const date = new Date((cell.v - 25569) * 86400 * 1000);
+        if (!isNaN(date)) {
+            return `${date.getUTCFullYear()}.${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+        }
+    }
+    
+    return null;
+}
 
+async function loadAllData() {
+    const listEl = document.getElementById('ranking-list');
+    listEl.innerHTML = '<li class="py-3 text-center text-gray-400">正在同步雲端資料...</li>';
+    
+    try {
+        await fetchItemDictionary();
+        
+        allOrdersData = [];
+        await Promise.all(TABS_CONFIG.map(config => fetchTabOrders(config)));
+        
+        console.log("✅ 總訂單筆數:", allOrdersData.length);
+        
+        if (allOrdersData.length === 0) {
+            listEl.innerHTML = '<li class="py-3 text-center text-red-400">⚠️ 無法讀取資料，請確認試算表已設為「公開分享（知道連結者可檢視）」</li>';
+            return;
+        }
+        
+        initMonthSelect();
+        renderData();
+    } catch (e) {
+        console.error("載入失敗:", e);
+        listEl.innerHTML = `<li class="py-3 text-center text-red-400">❌ 載入失敗：${e.message}<br><small>請確認 Google Sheet 已公開分享</small></li>`;
+    }
+}
+
+async function fetchItemDictionary() {
+    try {
+        const data = await fetchGvizData(0);
+        itemMap = { codes: {}, names: {} };
+        
+        if (data?.table?.rows) {
+            data.table.rows.forEach((row, idx) => {
+                if (idx === 0 || !row.c) return;
+                const code = row.c[1]?.v ? String(row.c[1].v).trim() : '';
+                const shortName = row.c[26]?.v ? String(row.c[26].v).trim() : '';
+                const imgUrl = row.c[28]?.v ? String(row.c[28].v).trim() : '';
+                
                 if (shortName) {
                     if (code) itemMap.codes[code] = { shortName, imgUrl };
                     itemMap.names[shortName] = { shortName, imgUrl };
                 }
             });
-            console.log("Item 字典載入成功，商品總數:", Object.keys(itemMap.names).length);
+            console.log("✅ 商品字典載入，共", Object.keys(itemMap.names).length, "筆");
         }
-    } catch (e) { 
-        console.error("Item 字典載入失敗，錯誤回報:", e); 
+    } catch (e) {
+        console.warn("⚠️ 商品字典載入失敗（不影響訂單統計）:", e.message);
     }
 }
 
 async function fetchTabOrders(config) {
-    const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&gid=${config.gid}`;
     try {
-        const response = await fetch(url);
-        const text = await response.text();
-        const data = JSON.parse(text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1));
+        const data = await fetchGvizData(config.gid);
+        let count = 0;
         
-        let validRowsCount = 0;
-
-        if (data && data.table && data.table.rows) {
+        if (data?.table?.rows) {
             data.table.rows.forEach((row, idx) => {
-                if (idx === 0 || !row.c) return; // 跳過標頭與空行
+                if (idx === 0 || !row.c) return;
                 
-                // 超強安全檢查：確保要讀取的欄位存在，否則直接跳過不報錯
-                if (!row.c[config.dateIdx] || !row.c[config.nameIdx]) return;
-
+                // ✅ 安全檢查欄位是否存在
+                const dateCell = row.c[config.dateIdx];
+                const nameCell = row.c[config.nameIdx];
+                if (!dateCell || !nameCell) return;
+                
                 try {
-                    // 1. 解析日期
-                    let cellDate = row.c[config.dateIdx];
-                    let rawDate = cellDate.f || (cellDate.v ? String(cellDate.v) : '');
-                    let monthMatch = rawDate.match(/(\d{4})[年\/-](\d{1,2})/);
+                    // 解析日期
+                    const ym = parseGvizDate(dateCell);
+                    if (!ym) return;
                     
-                    let ym = '未知月份';
-                    if (monthMatch) {
-                        ym = `${monthMatch[1]}.${monthMatch[2].padStart(2, '0')}`;
-                    } else if (rawDate.includes('Date')) {
-                        const dateMatch = rawDate.match(/Date\((\d{4}),\s*(\d{1,2}),\s*(\d{1,2})\)/);
-                        if (dateMatch) {
-                            ym = `${dateMatch[1]}.${String(parseInt(dateMatch[2]) + 1).padStart(2, '0')}`;
-                        }
-                    }
-                    if (ym === '未知月份') return; 
-
-                    // 2. 解析商品標識碼
-                    let rawId = row.c[config.nameIdx].v ? String(row.c[config.nameIdx].v).trim() : '';
+                    // 解析商品名稱/貨號
+                    const rawId = nameCell.v ? String(nameCell.v).trim() : '';
                     if (!rawId || rawId === 'null') return;
-
-                    // 3. 解析數量
-                    let quantity = 1;
-                    if (config.qtyIdx !== null && row.c[config.qtyIdx] && row.c[config.qtyIdx].v !== null) {
-                        quantity = parseInt(row.c[config.qtyIdx].v) || 1;
-                    }
-
-                    // 4. 對應商品字典
-                    let resolved = { shortName: rawId, imgUrl: '' };
                     
+                    // 解析數量
+                    let quantity = 1;
+                    const qtyCell = row.c[config.qtyIdx];
+                    if (qtyCell?.v != null) {
+                        quantity = parseInt(qtyCell.v) || 1;
+                    }
+                    
+                    // 比對商品字典
+                    let resolved = { shortName: rawId, imgUrl: '' };
                     if (config.matchType === 'code') {
-                        if (itemMap.codes[rawId]) {
-                            resolved = itemMap.codes[rawId];
-                        }
+                        if (itemMap.codes[rawId]) resolved = itemMap.codes[rawId];
                     } else {
-                        for (let key in itemMap.names) {
-                            if (rawId.includes(key)) { 
-                                resolved = itemMap.names[key]; 
-                                break; 
-                            }
+                        for (const key in itemMap.names) {
+                            if (rawId.includes(key)) { resolved = itemMap.names[key]; break; }
                         }
                     }
-
+                    
                     allOrdersData.push({
                         month: ym,
                         platform: config.platform,
                         name: resolved.shortName,
                         imgUrl: resolved.imgUrl,
-                        quantity: quantity
+                        quantity
                     });
-                    
-                    validRowsCount++;
-
-                } catch (innerError) {
-                    // 單行解析出錯時，跳過，不影響其他行
-                }
+                    count++;
+                } catch (_) {}
             });
-            console.log(`分頁 [${config.tabName}] 成功讀取到 ${validRowsCount} 筆有效訂單`);
         }
-    } catch (e) { 
-        console.error(`分頁 [${config.tabName}] 連線或讀取失敗:`, e); 
+        console.log(`✅ [${config.tabName}] 讀取 ${count} 筆`);
+    } catch (e) {
+        console.error(`❌ [${config.tabName}] 失敗:`, e.message);
     }
 }
 
 function initMonthSelect() {
     const monthSelect = document.getElementById('month-select');
-    const months = [...new Set(allOrdersData.map(d => d.month))].sort((a,b) => b.localeCompare(a));
+    const months = [...new Set(allOrdersData.map(d => d.month))]
+        .filter(m => m !== '未知月份')
+        .sort((a, b) => b.localeCompare(a));
     
     if (months.length === 0) {
         monthSelect.innerHTML = '<option value="all">全部月份 (無資料)</option>';
         return;
     }
-
-    let html = '<option value="all">全部月份 (年度累計)</option>';
-    html += months.map(m => `<option value="${m}">${m.replace('.', ' 年 ')} 月</option>`).join('');
-    monthSelect.innerHTML = html;
     
-    monthSelect.value = months[0]; // 預設選取最新月份
+    monthSelect.innerHTML = '<option value="all">全部月份 (年度累計)</option>' +
+        months.map(m => `<option value="${m}">${m.replace('.', ' 年 ')} 月</option>`).join('');
+    monthSelect.value = months[0];
 }
 
 function renderData() {
     const p = document.getElementById('platform-select').value;
     const m = document.getElementById('month-select').value;
     
-    let filtered = allOrdersData.filter(d => (p === 'all' || d.platform === p) && (m === 'all' || d.month === m));
-
+    const filtered = allOrdersData.filter(d =>
+        (p === 'all' || d.platform === p) && (m === 'all' || d.month === m)
+    );
+    
     const sum = {};
     filtered.forEach(d => {
         if (!sum[d.name]) sum[d.name] = { qty: 0, img: d.imgUrl };
         sum[d.name].qty += d.quantity;
     });
-
-    const sorted = Object.keys(sum).map(k => ({ name: k, ...sum[k] })).sort((a,b) => b.qty - a.qty);
+    
+    const sorted = Object.entries(sum)
+        .map(([name, v]) => ({ name, ...v }))
+        .sort((a, b) => b.qty - a.qty);
     
     updateChart(sorted);
     updateList(sorted);
@@ -200,23 +215,22 @@ function updateChart(data) {
     const ctx = document.getElementById('salesChart').getContext('2d');
     if (myChart) myChart.destroy();
     
-    const topData = data.slice(0, 15);
-
+    const top = data.slice(0, 15);
     myChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: topData.map(d => d.name),
-            datasets: [{ 
-                label: '銷售件數', 
-                data: topData.map(d => d.qty), 
+            labels: top.map(d => d.name),
+            datasets: [{
+                label: '銷售件數',
+                data: top.map(d => d.qty),
                 backgroundColor: 'rgba(59, 130, 246, 0.75)',
                 borderColor: 'rgba(59, 130, 246, 1)',
                 borderWidth: 1,
                 borderRadius: 4
             }]
         },
-        options: { 
-            responsive: true, 
+        options: {
+            responsive: true,
             maintainAspectRatio: false,
             scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
         }
@@ -229,19 +243,19 @@ function updateList(data) {
         listContainer.innerHTML = '<li class="py-3 text-gray-400 text-center">無銷售數據</li>';
         return;
     }
-
+    
     listContainer.innerHTML = data.map((d, i) => {
-        const imgSrc = d.img && d.img.startsWith('http') ? d.img : 'https://via.placeholder.com/100?text=No+Image';
+        const imgSrc = d.img?.startsWith('http') ? d.img : 'https://placehold.co/100x100?text=No+Img';
         return `
             <li class="py-4 flex items-center gap-4">
                 <span class="text-lg font-bold ${i < 3 ? 'text-amber-500' : 'text-gray-400'} w-6 text-center">${i + 1}</span>
-                <img src="${imgSrc}" class="w-12 h-12 rounded object-cover border bg-gray-100" onerror="this.src='https://via.placeholder.com/100?text=Error'">
+                <img src="${imgSrc}" class="w-12 h-12 rounded object-cover border bg-gray-100"
+                     onerror="this.src='https://placehold.co/100x100?text=Error'">
                 <div class="flex-1 min-w-0">
                     <p class="font-medium text-gray-800 truncate" title="${d.name}">${d.name}</p>
                     <p class="text-xs text-gray-400 mt-0.5">商品排行</p>
                 </div>
                 <span class="font-semibold text-blue-600 whitespace-nowrap">${d.qty} 件</span>
-            </li>
-        `;
+            </li>`;
     }).join('');
 }
