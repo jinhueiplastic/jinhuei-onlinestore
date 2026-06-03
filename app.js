@@ -346,7 +346,7 @@ function updateList(data) {
                      class="w-12 h-12 rounded object-cover border bg-gray-100 flex-shrink-0"
                      onerror="this.src='https://placehold.co/100x100?text=Error'">
                 <div class="flex-1 min-w-0">
-                    <p class="font-medium text-gray-800 truncate" title="${d.name}">${d.name}</p>
+                    <p class="font-medium text-gray-800 break-words">${d.name}</p>
                 </div>
                 <span class="font-semibold text-blue-600 whitespace-nowrap">${d.qty} 件</span>
             </li>`;
