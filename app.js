@@ -203,42 +203,58 @@ async function fetchAnalysisData() {
 }
 
 // ─── 賣貨便財務（直接從訂單分頁計算）─────────────────────────────────────────
-// 只讀 B欄有日期的列（主列），代表一張訂單
 // 欄位：B(1)日期  F(5)單價  G(6)不含稅單價  H(7)數量  J(9)運費  K(10)訂單總額
+// 兩階段讀取：
+//   主列（B欄有日期）：記錄日期、訂單總額、運費補貼（訂單層級）
+//   所有列含繼承列：每列都累加稅金 = 數量 × (單價 - 不含稅單價)
 async function fetchMaigoFinance() {
     try {
         const data = await fetchGvizData(MAIGO_GID);
-        const tmp = {}; // { ym: { orders, sales, actual } }
+        const tmp = {}; // { ym: { orders, sales, tax, freightSubsidy } }
+        let lastYm = null;
+
         if (data?.table?.rows) {
             data.table.rows.forEach(row => {
                 if (!row.c) return;
-                // ✅ 只處理 B欄有日期的列（主列）
-                const ym = parseGvizDate(row.c[1]);
-                if (!ym) return;
 
-                const unitPrice    = parseFloat(row.c[5]?.v)  || 0; // F 單價
-                const unitPriceEx  = parseFloat(row.c[6]?.v)  || 0; // G 不含稅單價
-                const qty          = parseFloat(row.c[7]?.v)  || 1; // H 數量
-                const freight      = parseFloat(row.c[9]?.v)  || 0; // J 運費
-                const orderTotal   = parseFloat(row.c[10]?.v) || 0; // K 訂單總額
-                if (!orderTotal) return;
+                const parsedYm = parseGvizDate(row.c[1]); // B欄日期
 
-                // 稅金 = 數量 × (單價 - 不含稅單價)
-                const tax = qty * (unitPrice - unitPriceEx);
-                // 運費補貼：運費==0 → 補貼 $38
-                const freightSubsidy = freight === 0 ? 38 : 0;
-                // 實拿 = 訂單總額 - 稅金 - 運費補貼
-                const actual = orderTotal - tax - freightSubsidy;
+                if (parsedYm) {
+                    // ── 主列：有日期，記錄訂單層級資料 ──
+                    lastYm = parsedYm;
+                    const orderTotal      = parseFloat(row.c[10]?.v) || 0; // K 訂單總額
+                    const freight         = parseFloat(row.c[9]?.v)  || 0; // J 運費
+                    const freightSubsidy  = freight === 0 ? 38 : 0;        // 運費補貼
 
-                if (!tmp[ym]) tmp[ym] = { orders: 0, sales: 0, actual: 0 };
-                tmp[ym].orders += 1;
-                tmp[ym].sales  += orderTotal;
-                tmp[ym].actual += actual;
+                    if (!orderTotal) return; // 無訂單總額跳過
+
+                    if (!tmp[lastYm]) tmp[lastYm] = { orders: 0, sales: 0, tax: 0, freightSubsidy: 0 };
+                    tmp[lastYm].orders          += 1;
+                    tmp[lastYm].sales           += orderTotal;
+                    tmp[lastYm].freightSubsidy  += freightSubsidy;
+                }
+
+                // ── 所有列（含繼承列）：累加稅金 ──
+                if (!lastYm) return; // 還沒遇到第一個日期，跳過
+                const unitPrice   = parseFloat(row.c[5]?.v) || 0; // F 單價
+                const unitPriceEx = parseFloat(row.c[6]?.v) || 0; // G 不含稅單價
+                const qty         = parseFloat(row.c[7]?.v) || 0; // H 數量
+                const tax         = qty * (unitPrice - unitPriceEx);
+
+                if (!tmp[lastYm]) tmp[lastYm] = { orders: 0, sales: 0, tax: 0, freightSubsidy: 0 };
+                tmp[lastYm].tax += tax;
             });
         }
-        maigoData = Object.entries(tmp)
-            .map(([ym, v]) => ({ ym, ...v }))
-            .sort((a, b) => a.ym.localeCompare(b.ym));
+
+        maigoData = Object.entries(tmp).map(([ym, v]) => ({
+            ym,
+            orders:          v.orders,
+            sales:           v.sales,
+            tax:             v.tax,
+            freightSubsidy:  v.freightSubsidy,
+            actual:          v.sales - v.tax - v.freightSubsidy
+        })).sort((a, b) => a.ym.localeCompare(b.ym));
+
         console.log('✅ 賣貨便財務：', maigoData);
     } catch (e) { console.warn('⚠️ 賣貨便財務載入失敗:', e.message); }
 }
@@ -692,9 +708,11 @@ function renderAnalysisMaigo(container, subTabHtml, yearVal) {
     if (!rows.length) { container.innerHTML = subTabHtml + '<p class="text-gray-400 text-center py-12">無資料</p>'; return; }
 
     const labels = rows.map(d => { const [y,m]=d.ym.split('.'); return yearVal==='all'?`${y}/${m}`:`${parseInt(m)}月`; });
-    const totOrders = rows.reduce((s,d)=>s+d.orders,0);
-    const totSales  = rows.reduce((s,d)=>s+d.sales,0);
-    const totActual = rows.reduce((s,d)=>s+d.actual,0);
+    const totOrders  = rows.reduce((s,d)=>s+d.orders,0);
+    const totSales   = rows.reduce((s,d)=>s+d.sales,0);
+    const totActual  = rows.reduce((s,d)=>s+d.actual,0);
+    const totTax     = rows.reduce((s,d)=>s+d.tax,0);
+    const totFreight = rows.reduce((s,d)=>s+d.freightSubsidy,0);
     const fmt = n => n>=10000?`$${(n/10000).toFixed(1)}萬`:`$${Math.round(n).toLocaleString()}`;
     const tickRotate = yearVal==='all'?45:0;
 
@@ -711,7 +729,7 @@ function renderAnalysisMaigo(container, subTabHtml, yearVal) {
             <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-5 text-center">
                 <p class="text-xs text-gray-400 mb-1">實拿總額</p>
                 <p class="text-2xl font-semibold text-green-600">${fmt(totActual)}</p>
-                <p class="text-xs text-gray-400 mt-1">（約 ${totSales>0?((totActual/totSales)*100).toFixed(1):0}%）</p>
+                <p class="text-xs text-gray-400 mt-1">（稅金 ${totSales>0?((totTax/totSales)*100).toFixed(1):0}% + 運費 ${totSales>0?((totFreight/totSales)*100).toFixed(1):0}%）</p>
             </div>
         </div>
         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
