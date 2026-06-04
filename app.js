@@ -195,7 +195,9 @@ async function fetchTabOrders(config) {
                     const nameCell = row.c[config.nameIdx];
                     if (!nameCell) return;
                     const rawId = nameCell.v ? String(nameCell.v).trim() : '';
-                    if (!rawId || rawId === 'null' || /^\d+$/.test(rawId)) return;
+                    if (!rawId || rawId === 'null') return;
+                    // 純數字只在 name 比對時過濾（避免把數量欄誤判），code 比對（蝦皮貨號）允許純數字
+                    if (config.matchType === 'name' && /^\d+$/.test(rawId)) return;
                     let quantity = 1;
                     const qtyCell = row.c[config.qtyIdx];
                     if (qtyCell?.v != null) quantity = parseInt(qtyCell.v) || 1;
