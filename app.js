@@ -24,6 +24,11 @@ const TABS_CONFIG = [
 // 蝦皮財務分析（來自 Analysis 分頁）
 const ANALYSIS_GID = '726971026';
 
+// 售價來源
+// Item sheet (gid=0)：      B(1)=Code, AA(26)=簡稱, I(8)=蝦皮售價
+// 賣貨便 sheet (gid=779764966)：B(1)=Code, C(2)=Item name, G(6)=賣貨便售價
+const MAIGO_PRICE_GID = '779764966';
+
 // 賣貨便財務分析（直接從賣貨便-訂單分頁計算）
 // 欄位：B(1)=訂單日期  F(5)=單價  G(6)=不含稅單價  H(7)=數量  J(9)=運費  K(10)=訂單總額
 // 運費補貼：運費欄==0 → 我方補貼 $38；否則不補貼
@@ -122,16 +127,56 @@ async function fetchItemDictionary() {
         if (data?.table?.rows) {
             data.table.rows.forEach(row => {
                 if (!row.c) return;
-                const code      = row.c[1]?.v  ? String(row.c[1].v).trim()  : '';
-                const shortName = row.c[26]?.v ? String(row.c[26].v).trim() : '';
-                const imgUrl    = row.c[28]?.v ? String(row.c[28].v).trim() : '';
+                const code        = row.c[1]?.v  ? String(row.c[1].v).trim()  : '';
+                const shortName   = row.c[26]?.v ? String(row.c[26].v).trim() : '';
+                const imgUrl      = row.c[28]?.v ? String(row.c[28].v).trim() : '';
+                // I欄(8) = 蝦皮售價
+                const shopeePrice = row.c[8]?.v  != null ? parseFloat(row.c[8].v) : null;
                 if (!shortName) return;
-                if (code) itemMap.codes[code] = { shortName, imgUrl };
-                itemMap.names[shortName] = { shortName, imgUrl };
+                const entry = { shortName, imgUrl, shopeePrice, maigoPrice: null };
+                if (code) itemMap.codes[code] = entry;
+                itemMap.names[shortName] = entry;
             });
         }
         console.log('✅ 商品字典載入：', Object.keys(itemMap.names).length, '筆');
+        // 載入賣貨便售價並合併進 itemMap
+        await fetchMaigoPrice();
     } catch (e) { console.warn('⚠️ 商品字典載入失敗:', e.message); }
+}
+
+// ─── 讀取賣貨便售價（gid=779764966）────────────────────────────────────────
+// B(1)=Code, C(2)=Item name, G(6)=賣貨便售價
+async function fetchMaigoPrice() {
+    try {
+        const data = await fetchGvizData(MAIGO_PRICE_GID);
+        if (data?.table?.rows) {
+            data.table.rows.forEach(row => {
+                if (!row.c) return;
+                const code      = row.c[1]?.v ? String(row.c[1].v).trim() : '';
+                const itemName  = row.c[2]?.v ? String(row.c[2].v).trim() : '';
+                const maigoPrice = row.c[6]?.v != null ? parseFloat(row.c[6].v) : null;
+                if (maigoPrice === null) return;
+
+                // 用 code 比對
+                if (code && itemMap.codes[code]) {
+                    itemMap.codes[code].maigoPrice = maigoPrice;
+                    // 同步更新 names
+                    const sn = itemMap.codes[code].shortName;
+                    if (itemMap.names[sn]) itemMap.names[sn].maigoPrice = maigoPrice;
+                }
+                // 用 itemName 模糊比對 AA欄簡稱
+                if (itemName) {
+                    for (const key in itemMap.names) {
+                        if (itemName.includes(key) || key.includes(itemName)) {
+                            itemMap.names[key].maigoPrice = maigoPrice;
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+        console.log('✅ 賣貨便售價載入完成');
+    } catch (e) { console.warn('⚠️ 賣貨便售價載入失敗:', e.message); }
 }
 
 async function fetchTabOrders(config) {
@@ -397,7 +442,13 @@ function renderProductMonthly() {
         const monthIdx = allMonths.indexOf(d.month);
         if (monthIdx === -1) return;
         if (!productMap[d.name]) {
-            productMap[d.name] = { img: d.imgUrl };
+            // 從 itemMap 取得售價
+            const entry = itemMap.names[d.name] || Object.values(itemMap.names).find(e => e.shortName === d.name);
+            productMap[d.name] = {
+                img: d.imgUrl,
+                shopeePrice: entry?.shopeePrice ?? null,
+                maigoPrice:  entry?.maigoPrice  ?? null
+            };
             PLATFORMS.forEach(pl => { productMap[d.name][pl] = new Array(allMonths.length).fill(0); });
         }
         productMap[d.name][d.platform][monthIdx] += d.quantity;
@@ -406,7 +457,7 @@ function renderProductMonthly() {
 
     let products = Object.entries(productMap).map(([name, v]) => {
         const total = activePlatforms.reduce((s, pl) => s + v[pl].reduce((a, n) => a+n, 0), 0);
-        return { name, img: v.img, data: v, total };
+        return { name, img: v.img, shopeePrice: v.shopeePrice, maigoPrice: v.maigoPrice, data: v, total };
     }).sort((a, b) => b.total - a.total);
     if (q) products = products.filter(p => p.name.toLowerCase().includes(q));
 
@@ -428,12 +479,16 @@ function renderProductMonthly() {
         const yearLabel = yearVal === 'all'
             ? `${allMonths[0].split('.')[0]}–${allMonths[allMonths.length-1].split('.')[0]} 全期`
             : `${yearVal} 年`;
+        const shopeePriceHtml = p.shopeePrice != null ? `<span style="color:#ee4d2d;">蝦皮售價 $${p.shopeePrice.toLocaleString()}</span>` : '';
+        const maigoPriceHtml  = p.maigoPrice  != null ? `<span style="color:#16a34a;">賣貨便/好賣+售價 $${p.maigoPrice.toLocaleString()}</span>` : '';
+        const priceHtml = [shopeePriceHtml, maigoPriceHtml].filter(Boolean).join('<span style="color:#d1d5db;margin:0 4px;">／</span>');
         return `<div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
             <div class="flex items-center gap-4 mb-4">
                 <img src="${imgSrc}" class="w-14 h-14 rounded-lg object-cover border bg-gray-100 flex-shrink-0"
                      onerror="this.src='https://placehold.co/100x100?text=Error'">
                 <div class="flex-1">
                     <p class="font-semibold text-gray-800 text-base">${p.name}</p>
+                    ${priceHtml ? `<p class="text-sm font-medium mt-0.5" style="display:flex;gap:4px;align-items:center;">${priceHtml}</p>` : ''}
                     <p class="text-sm text-gray-400 mt-0.5">${yearLabel} 累計銷量：<span class="font-semibold text-blue-600">${p.total} 件</span></p>
                 </div>
             </div>
