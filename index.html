@@ -60,6 +60,15 @@
             transition: color 0.15s, border-color 0.15s;
         }
         .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+
+        .atab {
+            padding: 8px 16px; border: none;
+            border-bottom: 2px solid transparent;
+            background: transparent; font-size: 0.875rem; font-weight: 500;
+            color: #6b7280; cursor: pointer;
+            transition: color 0.15s, border-color 0.15s;
+        }
+        .atab-active { color: #2563eb !important; border-bottom-color: #2563eb !important; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen">
@@ -104,7 +113,7 @@
     <header class="bg-white shadow-sm border-b sticky top-0 z-50">
         <div class="container mx-auto px-6 py-4 flex justify-between items-center">
             <h1 class="text-xl font-bold text-blue-600">JIN HUEI 網店銷量分析</h1>
-            <span class="text-sm text-gray-500">數據即時同步</span>
+            <span id="last-update" class="text-sm text-gray-500">數據同步中...</span>
         </div>
     </header>
 
@@ -113,7 +122,6 @@
         <!-- Filter Bar -->
         <div class="bg-white p-6 rounded-xl shadow-sm mb-4 flex flex-wrap gap-4 items-center">
 
-            <!-- 賣場選單（Analysis tab 時隱藏） -->
             <div id="platform-select-wrap">
                 <label class="block text-sm font-medium text-gray-600 mb-1">選擇賣場</label>
                 <select id="platform-select" class="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -124,19 +132,16 @@
                 </select>
             </div>
 
-            <!-- 熱銷排行：月份選單 -->
             <div id="month-select-wrap">
                 <label class="block text-sm font-medium text-gray-600 mb-1">選擇月份</label>
                 <select id="month-select" class="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
             </div>
 
-            <!-- 商品月銷量：年份選單 -->
             <div id="year-select-wrap" class="hidden">
                 <label class="block text-sm font-medium text-gray-600 mb-1">選擇年份</label>
                 <select id="year-select" class="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
             </div>
 
-            <!-- 商品月銷量：搜尋 -->
             <div id="product-search-wrap" class="hidden">
                 <label class="block text-sm font-medium text-gray-600 mb-1">搜尋商品</label>
                 <input id="product-search" type="text" placeholder="輸入商品名稱…"
@@ -145,7 +150,6 @@
                     style="width:200px;">
             </div>
 
-            <!-- Analysis：年份選單 -->
             <div id="analysis-year-wrap" class="hidden">
                 <label class="block text-sm font-medium text-gray-600 mb-1">選擇年份</label>
                 <select id="analysis-year-select" class="border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"></select>
