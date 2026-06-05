@@ -113,6 +113,7 @@ async function loadAllData() {
             return;
         }
         initMonthSelect();
+        updateLastDateDisplay();
         renderData();
     } catch (e) {
         console.error('❌ 載入失敗:', e);
@@ -182,14 +183,19 @@ async function fetchMaigoPrice() {
 async function fetchTabOrders(config) {
     try {
         const data = await fetchGvizData(config.gid);
-        let count = 0, lastValidDate = null;
+        let count = 0, lastValidDate = null, lastFullDate = null;
         if (data?.table?.rows) {
             data.table.rows.forEach(row => {
                 if (!row.c) return;
                 try {
-                    const parsedDate = parseGvizDate(row.c[config.dateIdx]);
-                    if (parsedDate) { lastValidDate = parsedDate; }
-                    else if (config.inheritDate && lastValidDate) { /* 繼承 */ }
+                    const dateCell = row.c[config.dateIdx];
+                    const parsedDate = parseGvizDate(dateCell);
+                    if (parsedDate) {
+                        lastValidDate = parsedDate;
+                        // 抓完整日期字串（用於顯示最後更新日）
+                        const rawFull = dateCell?.f ? String(dateCell.f) : (dateCell?.v ? String(dateCell.v) : '');
+                        lastFullDate = rawFull || parsedDate;
+                    } else if (config.inheritDate && lastValidDate) { /* 繼承 */ }
                     else { return; }
                     const ym = lastValidDate;
                     const nameCell = row.c[config.nameIdx];
@@ -212,7 +218,7 @@ async function fetchTabOrders(config) {
                         }
                         if (!matched) console.warn(`⚠️ [${config.platform}] 找不到名稱對應：${rawId}`);
                     }
-                    allOrdersData.push({ month: ym, platform: config.platform, name: resolved.shortName, imgUrl: resolved.imgUrl, quantity });
+                    allOrdersData.push({ month: ym, fullDate: lastFullDate, platform: config.platform, name: resolved.shortName, imgUrl: resolved.imgUrl, quantity });
                     count++;
                 } catch (e) { console.warn('單列解析失敗:', e.message); }
             });
@@ -316,6 +322,34 @@ function initMonthSelect() {
     monthSelect.value = 'all';
     initYearSelect();
     initAnalysisYearSelect();
+}
+
+// ─── 顯示最後更新日期 ─────────────────────────────────────────────────────────
+function updateLastDateDisplay() {
+    const el = document.getElementById('last-update');
+    if (!el) return;
+    if (!allOrdersData.length) { el.textContent = '數據即時同步'; return; }
+
+    // 找最新的 fullDate（原始日期字串）
+    // 格式可能是 "2026-06-01"、"2026/4/28 07:52"、"2026年6月1日" 等
+    // 統一解析成 Date 物件比較大小
+    let latestDate = null;
+    allOrdersData.forEach(d => {
+        if (!d.fullDate) return;
+        const raw = String(d.fullDate);
+        const m = raw.match(/(\d{4})[年\/-](\d{1,2})[月\/\-]?\s*(\d{1,2})?/);
+        if (!m) return;
+        const y = parseInt(m[1]), mo = parseInt(m[2]) - 1, day = parseInt(m[3] || 1);
+        const dt = new Date(y, mo, day);
+        if (!latestDate || dt > latestDate) latestDate = dt;
+    });
+
+    if (!latestDate) { el.textContent = '數據即時同步'; return; }
+
+    const y  = latestDate.getFullYear();
+    const mo = String(latestDate.getMonth() + 1).padStart(2, '0');
+    const d  = String(latestDate.getDate()).padStart(2, '0');
+    el.textContent = `數據更新至 ${y}/${mo}/${d}`;
 }
 
 function initYearSelect() {
